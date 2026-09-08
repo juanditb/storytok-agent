@@ -1,9 +1,9 @@
 # storytok
 
-Make [StoryTok](https://storytok.ai) videos from any coding agent or shell: narrated Reddit story videos, texting-story videos, auto captions, split-screen edits and AI highlight clips, as 1080×1920 MP4s. One package, three ways in:
+Make [StoryTok](https://storytok.ai) videos from any coding agent or shell: narrated Reddit story videos, texting-story videos, auto captions, split-screen edits and AI highlight clips, as 1080×1920 MP4s. One package, three ways in (installed straight from GitHub with `npx -y github:juanditb/storytok-agent`; the shorter `npx -y storytok` will work once the package is on npm):
 
-- **CLI**: `npx -y storytok story --reddit <url> --background "GTA 1.webm" --wait --out .`
-- **MCP server**: `npx -y storytok mcp` for Claude Code, Claude Desktop, Cursor, Windsurf, Codex and any MCP client.
+- **CLI**: `npx -y github:juanditb/storytok-agent story --reddit <url> --background "GTA 1.webm" --wait --out .`
+- **MCP server**: `npx -y github:juanditb/storytok-agent mcp` for Claude Code, Claude Desktop, Cursor, Windsurf, Codex and any MCP client.
 - **Skill**: `skill/SKILL.md` teaches agents without MCP how to use the CLI.
 
 Billing is StoryTok's: 1 credit per rendered minute (2 with premium voices), from packs that never expire, 3 free minutes on every new account. Failed renders refund automatically. There is no subscription and nothing to cancel.
@@ -13,7 +13,7 @@ Billing is StoryTok's: 1 credit per rendered minute (2 with premium voices), fro
 **Claude Code**
 
 ```sh
-claude mcp add storytok -e STORYTOK_API_KEY=stk_live_… -- npx -y storytok mcp
+claude mcp add storytok -e STORYTOK_API_KEY=stk_live_… -- npx -y github:juanditb/storytok-agent mcp
 ```
 
 **Codex** (`~/.codex/config.toml`)
@@ -31,7 +31,7 @@ env = { STORYTOK_API_KEY = "stk_live_…" }
 { "mcpServers": { "storytok": { "command": "npx", "args": ["-y", "storytok", "mcp"], "env": { "STORYTOK_API_KEY": "stk_live_…" } } } }
 ```
 
-Get a key at [storytok.ai/settings/developer](https://storytok.ai/settings/developer), or skip the copying: run `npx -y storytok login`, approve the code in your browser, and the key is stored in `~/.config/storytok/config.json`.
+Get a key at [storytok.ai/settings/developer](https://storytok.ai/settings/developer), or skip the copying: run `npx -y github:juanditb/storytok-agent login`, approve the code in your browser, and the key is stored in `~/.config/storytok/config.json`.
 
 ## What the agent can do
 
