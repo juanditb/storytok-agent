@@ -1,6 +1,6 @@
 {
   "name": "storytok-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Make StoryTok videos (Reddit stories, texting stories, captions, split screen, highlights) from any coding agent: CLI, MCP server and agent skill.",
   "type": "module",
   "bin": {

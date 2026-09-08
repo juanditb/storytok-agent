@@ -28,7 +28,7 @@ Run everything through the CLI: `npx -y storytok-agent <command>` (Node 20+, no 
 | Cost only | `npx -y storytok-agent estimate story --script-file story.txt --voice Joanna` |
 | Status / wait / download | `npx -y storytok-agent job <id>`, `npx -y storytok-agent wait <id>`, `npx -y storytok-agent download <id> --out .` |
 
-`--wait --out DIR` blocks until the render finishes (30–180 s, `--timeout` to change the 240 s cap) and saves the file. Always pass `--out` with the directory the user wants. Add `--json` for machine-readable output.
+`--wait --out DIR` blocks until the render finishes (30–180 s; `--timeout 600` raises the default 240 s cap, and `wait <id>` resumes a wait that gave up) and saves the file. Always pass `--out` with the directory the user wants. Add `--json` for machine-readable output.
 
 `convo.json` is `[{"side":"left","text":"are you awake","pause":"none"}, {"side":"right","text":"it's 3am. what","pause":"short"}]`. Left is the contact, right is "you". Use `--message "left: …" --message "right[long]: …"` for short conversations.
 
@@ -45,7 +45,7 @@ Run everything through the CLI: `npx -y storytok-agent <command>` (Node 20+, no 
 - `daily_cap_reached` / `429`: this key's daily cap is used up; the user can raise it at `https://storytok.ai/settings/developer`.
 - `idempotent_replay` in the output: identical inputs rendered recently and that job was returned instead of a new charge. Pass `--fresh` to force a new render.
 - `request_in_progress` / `409`: the same request is still being created; wait a few seconds and re-run the same command.
-- `idempotency_key_reused` / `422`: only after passing a custom `--idempotency-key` with a changed body; pick a new key.
+- `idempotency_key_reused` / `422`: should not happen from the CLI; re-run with `--fresh`.
 - `expired_token` / `410` during login: the code timed out or was already used; run `login` again.
 - `timeout` or `network_error`: StoryTok did not answer; check `STORYTOK_API_URL` (default https://storytok.ai) and retry once.
 

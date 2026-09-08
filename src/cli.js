@@ -172,6 +172,7 @@ async function createFlow(client, payload, { flags, durationSeconds, json }) {
   if (flags.wait || flags.out) {
     if (!json) print(`Queued ${created.job.id}. Waiting…`)
     result = await client.waitForJob(created.job.id, {
+      timeoutS: asNumber(flags.timeout, 240),
       onProgress: (job) => {
         if (!json) output.write(`  ${job.status} ${job.progress ?? 0}% ${job.stage ?? ""}\n`)
       },

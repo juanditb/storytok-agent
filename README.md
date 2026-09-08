@@ -1,14 +1,16 @@
 # storytok-agent
 
-Make [StoryTok](https://storytok.ai) videos from any coding agent or shell: narrated Reddit story videos, texting-story videos, auto captions, split-screen edits and AI highlight clips, as 1080×1920 MP4s. One package, three ways in (installed straight from GitHub with `npx -y storytok-agent`; the shorter `npx -y storytok` will work once the package is on npm):
+Make [StoryTok](https://storytok.ai) videos from any coding agent or shell: narrated Reddit story videos, texting-story videos, auto captions, split-screen edits and AI highlight clips, as 1080×1920 MP4s. One package, three ways in. The npm package is `storytok-agent`; the installed command is `storytok`.
 
 - **CLI**: `npx -y storytok-agent story --reddit <url> --background "GTA 1.webm" --wait --out .`
 - **MCP server**: `npx -y storytok-agent mcp` for Claude Code, Claude Desktop, Cursor, Windsurf, Codex and any MCP client.
-- **Skill**: `skill/SKILL.md` teaches agents without MCP how to use the CLI. Install it by copying the folder to `~/.claude/skills/storytok/SKILL.md` (Claude Code) or wherever your agent loads skills from.
+- **Skill**: `skill/SKILL.md` teaches agents without MCP how to use the CLI. Install it by copying `skill/` to `~/.claude/skills/storytok/` (Claude Code) or wherever your agent loads skills from.
 
 Billing is StoryTok's: 1 credit per rendered minute (2 with premium voices), from packs that never expire, 3 free minutes on every new account. Failed renders refund automatically. There is no subscription and nothing to cancel.
 
 ## Install
+
+Needs Node 20 or newer (`node -v`); npx downloads the package the first time it runs. Restart your agent after adding the server. With Claude Code, run the command in the folder you make videos from, or add `-s user` to register it everywhere.
 
 **Claude Code**
 

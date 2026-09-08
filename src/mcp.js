@@ -27,7 +27,7 @@ import {
 } from "./core.js"
 
 const CONFIRM_RULE =
-  "Two-phase: call without `confirm` first to get the cost estimate, show the user the credits and minutes, and only call again with confirm=true after they agree. Rendering spends credits."
+  "Two-phase: call without `confirm` first to get the cost estimate, show the user the credits and minutes, and only call again with confirm=true after they agree. Rendering spends credits. Repeating a confirm=true call with identical inputs returns the same job instead of charging again (idempotent_replay: true); pass fresh=true only when the user wants a second render."
 
 function text(value) {
   return { content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }] }
@@ -83,7 +83,7 @@ export function clientIdFromHost(info) {
 
 export async function createServer({ client } = {}) {
   const apiKey = await resolveApiKey()
-  if (!apiKey) console.error("storytok mcp: no API key found. Set STORYTOK_API_KEY in the MCP config or run `storytok login`, then restart the server.")
+  if (!apiKey) console.error("storytok mcp: no API key found. Set STORYTOK_API_KEY in the MCP config or run `npx -y storytok-agent login`, then restart the MCP server.")
   const api = new StoryTokClient({ apiKey, client: client ?? `mcp/${VERSION}` })
   const server = new McpServer({ name: "storytok", version: VERSION }, { instructions:
     `StoryTok renders vertical (1080×1920) narrated, captioned videos: Reddit stories, texting stories, auto captions, split screen and highlight clips. Credits: 1 per rendered minute (2 with premium voices); failed renders refund automatically. ${CONFIRM_RULE} Use get_catalog for valid voice ids, caption presets, chat themes, backgrounds and highlight types before creating. After creating, wait_for_job then download_job so the user gets the file. Site: ${siteUrl()}` })
