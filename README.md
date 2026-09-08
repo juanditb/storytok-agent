@@ -1,9 +1,9 @@
-# storytok
+# storytok-agent
 
-Make [StoryTok](https://storytok.ai) videos from any coding agent or shell: narrated Reddit story videos, texting-story videos, auto captions, split-screen edits and AI highlight clips, as 1080×1920 MP4s. One package, three ways in (installed straight from GitHub with `npx -y github:juanditb/storytok-agent`; the shorter `npx -y storytok` will work once the package is on npm):
+Make [StoryTok](https://storytok.ai) videos from any coding agent or shell: narrated Reddit story videos, texting-story videos, auto captions, split-screen edits and AI highlight clips, as 1080×1920 MP4s. One package, three ways in (installed straight from GitHub with `npx -y storytok-agent`; the shorter `npx -y storytok` will work once the package is on npm):
 
-- **CLI**: `npx -y github:juanditb/storytok-agent story --reddit <url> --background "GTA 1.webm" --wait --out .`
-- **MCP server**: `npx -y github:juanditb/storytok-agent mcp` for Claude Code, Claude Desktop, Cursor, Windsurf, Codex and any MCP client.
+- **CLI**: `npx -y storytok-agent story --reddit <url> --background "GTA 1.webm" --wait --out .`
+- **MCP server**: `npx -y storytok-agent mcp` for Claude Code, Claude Desktop, Cursor, Windsurf, Codex and any MCP client.
 - **Skill**: `skill/SKILL.md` teaches agents without MCP how to use the CLI. Install it by copying the folder to `~/.claude/skills/storytok/SKILL.md` (Claude Code) or wherever your agent loads skills from.
 
 Billing is StoryTok's: 1 credit per rendered minute (2 with premium voices), from packs that never expire, 3 free minutes on every new account. Failed renders refund automatically. There is no subscription and nothing to cancel.
@@ -13,7 +13,7 @@ Billing is StoryTok's: 1 credit per rendered minute (2 with premium voices), fro
 **Claude Code**
 
 ```sh
-claude mcp add storytok -e STORYTOK_API_KEY=stk_live_… -- npx -y github:juanditb/storytok-agent mcp
+claude mcp add storytok -e STORYTOK_API_KEY=stk_live_… -- npx -y storytok-agent mcp
 ```
 
 **Codex** (`~/.codex/config.toml`)
@@ -21,17 +21,17 @@ claude mcp add storytok -e STORYTOK_API_KEY=stk_live_… -- npx -y github:juandi
 ```toml
 [mcp_servers.storytok]
 command = "npx"
-args = ["-y", "github:juanditb/storytok-agent", "mcp"]
+args = ["-y", "storytok-agent", "mcp"]
 env = { STORYTOK_API_KEY = "stk_live_…" }
 ```
 
 **Cursor / Windsurf / Claude Desktop** (`mcp.json`)
 
 ```json
-{ "mcpServers": { "storytok": { "command": "npx", "args": ["-y", "github:juanditb/storytok-agent", "mcp"], "env": { "STORYTOK_API_KEY": "stk_live_…" } } } }
+{ "mcpServers": { "storytok": { "command": "npx", "args": ["-y", "storytok-agent", "mcp"], "env": { "STORYTOK_API_KEY": "stk_live_…" } } } }
 ```
 
-Get a key at [storytok.ai/settings/developer](https://storytok.ai/settings/developer), or skip the copying: run `npx -y github:juanditb/storytok-agent login` in your own terminal, approve the code in your browser, and the key is stored in `~/.config/storytok/config.json` (restart the MCP server afterwards so it picks the key up).
+Get a key at [storytok.ai/settings/developer](https://storytok.ai/settings/developer), or skip the copying: run `npx -y storytok-agent login` in your own terminal, approve the code in your browser, and the key is stored in `~/.config/storytok/config.json` (restart the MCP server afterwards so it picks the key up).
 
 ## What the agent can do
 

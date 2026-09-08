@@ -7,26 +7,26 @@ description: Make StoryTok videos from the terminal — narrated Reddit story vi
 
 StoryTok renders vertical (1080×1920, 30 fps) narrated and captioned videos. You write the script; StoryTok narrates it, times the captions word by word, lays it over gameplay footage and returns an MP4. Billing is per rendered minute (1 credit ≈ 1 minute, 2 with premium voices). Failed renders refund themselves.
 
-Run everything through the CLI: `npx -y github:juanditb/storytok-agent <command>` (Node 20+, no install step; the first run clones the package and takes ~20 s). If `npx -y storytok` resolves on npm, it is the same package and can be used instead.
+Run everything through the CLI: `npx -y storytok-agent <command>` (Node 20+, no install step; the binary is called `storytok` if installed globally with `npm i -g storytok-agent`).
 
 ## Before anything else
 
-1. **Auth.** If `STORYTOK_API_KEY` is not set and `npx -y github:juanditb/storytok-agent account` fails with `no_api_key`, ask the user to run `npx -y github:juanditb/storytok-agent login` in their own terminal (it waits up to 10 minutes for them to approve a code in the browser, longer than most tool timeouts) or to paste a key from https://storytok.ai/settings/developer into `STORYTOK_API_KEY`. The stored key is reused next time. A new account gets 3 free minutes.
-2. **Catalog.** Run `npx -y github:juanditb/storytok-agent catalog` once to see valid voice ids, caption presets, chat themes, background keys and music keys. Do not invent ids.
+1. **Auth.** If `STORYTOK_API_KEY` is not set and `npx -y storytok-agent account` fails with `no_api_key`, ask the user to run `npx -y storytok-agent login` in their own terminal (it waits up to 10 minutes for them to approve a code in the browser, longer than most tool timeouts) or to paste a key from https://storytok.ai/settings/developer into `STORYTOK_API_KEY`. The stored key is reused next time. A new account gets 3 free minutes.
+2. **Catalog.** Run `npx -y storytok-agent catalog` once to see valid voice ids, caption presets, chat themes, background keys and music keys. Do not invent ids.
 3. **Cost rule.** Every create command prints an estimate and then asks for confirmation. Never pass `--yes` until the user has seen the credits and agreed. In non-interactive shells the command exits with code 3 and the estimate; show the estimate, get a yes, then re-run with `--yes`.
 
 ## Commands
 
 | Task | Command |
 |---|---|
-| Reddit story from a script | `npx -y github:juanditb/storytok-agent story --title "…" --script-file story.txt --voice Joanna --background "Minecraft 4.mp4" --captions hormozi --intro --wait --out .` |
-| Reddit story from a post URL | `npx -y github:juanditb/storytok-agent story --reddit https://www.reddit.com/r/… --background "GTA 1.webm" --wait --out .` |
-| Texting story | `npx -y github:juanditb/storytok-agent text --contact Mom --messages convo.json --theme imessage_dark --background "Subway Surfers 2.mp4" --wait --out .` |
-| Captions on an upload | `npx -y github:juanditb/storytok-agent captions ./clip.mp4 --captions karaoke --wait --out .` |
-| Split screen | `npx -y github:juanditb/storytok-agent splitscreen ./clip.mp4 --background "Minecraft 1.mp4" --wait --out .` (or `--layout streamer --facecam 0.02,0.02,0.3,0.3`) |
-| Highlight clips | `npx -y github:juanditb/storytok-agent highlights ./podcast.mp4 --clips 3 --type key_insights --wait --out .` |
-| Cost only | `npx -y github:juanditb/storytok-agent estimate story --script-file story.txt --voice Joanna` |
-| Status / wait / download | `npx -y github:juanditb/storytok-agent job <id>`, `npx -y github:juanditb/storytok-agent wait <id>`, `npx -y github:juanditb/storytok-agent download <id> --out .` |
+| Reddit story from a script | `npx -y storytok-agent story --title "…" --script-file story.txt --voice Joanna --background "Minecraft 4.mp4" --captions hormozi --intro --wait --out .` |
+| Reddit story from a post URL | `npx -y storytok-agent story --reddit https://www.reddit.com/r/… --background "GTA 1.webm" --wait --out .` |
+| Texting story | `npx -y storytok-agent text --contact Mom --messages convo.json --theme imessage_dark --background "Subway Surfers 2.mp4" --wait --out .` |
+| Captions on an upload | `npx -y storytok-agent captions ./clip.mp4 --captions karaoke --wait --out .` |
+| Split screen | `npx -y storytok-agent splitscreen ./clip.mp4 --background "Minecraft 1.mp4" --wait --out .` (or `--layout streamer --facecam 0.02,0.02,0.3,0.3`) |
+| Highlight clips | `npx -y storytok-agent highlights ./podcast.mp4 --clips 3 --type key_insights --wait --out .` |
+| Cost only | `npx -y storytok-agent estimate story --script-file story.txt --voice Joanna` |
+| Status / wait / download | `npx -y storytok-agent job <id>`, `npx -y storytok-agent wait <id>`, `npx -y storytok-agent download <id> --out .` |
 
 `--wait --out DIR` blocks until the render finishes (30–180 s, `--timeout` to change the 240 s cap) and saves the file. Always pass `--out` with the directory the user wants. Add `--json` for machine-readable output.
 

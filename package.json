@@ -1,5 +1,5 @@
 {
-  "name": "storytok",
+  "name": "storytok-agent",
   "version": "0.1.0",
   "description": "Make StoryTok videos (Reddit stories, texting stories, captions, split screen, highlights) from any coding agent: CLI, MCP server and agent skill.",
   "type": "module",
@@ -35,7 +35,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/juanditb/storytok-agent"
+    "url": "git+https://github.com/juanditb/storytok-agent.git"
   },
   "homepage": "https://storytok.ai/developers/agents",
   "dependencies": {
