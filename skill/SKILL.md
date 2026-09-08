@@ -11,7 +11,7 @@ Run everything through the CLI: `npx -y github:juanditb/storytok-agent <command>
 
 ## Before anything else
 
-1. **Auth.** If `STORYTOK_API_KEY` is not set and `npx -y github:juanditb/storytok-agent account` fails with `no_api_key`, run `npx -y github:juanditb/storytok-agent login`, show the user the printed URL and code, and wait; the key is stored for next time. A new account gets 3 free minutes.
+1. **Auth.** If `STORYTOK_API_KEY` is not set and `npx -y github:juanditb/storytok-agent account` fails with `no_api_key`, ask the user to run `npx -y github:juanditb/storytok-agent login` in their own terminal (it waits up to 10 minutes for them to approve a code in the browser, longer than most tool timeouts) or to paste a key from https://storytok.ai/settings/developer into `STORYTOK_API_KEY`. The stored key is reused next time. A new account gets 3 free minutes.
 2. **Catalog.** Run `npx -y github:juanditb/storytok-agent catalog` once to see valid voice ids, caption presets, chat themes, background keys and music keys. Do not invent ids.
 3. **Cost rule.** Every create command prints an estimate and then asks for confirmation. Never pass `--yes` until the user has seen the credits and agreed. In non-interactive shells the command exits with code 3 and the estimate; show the estimate, get a yes, then re-run with `--yes`.
 
@@ -28,7 +28,7 @@ Run everything through the CLI: `npx -y github:juanditb/storytok-agent <command>
 | Cost only | `npx -y github:juanditb/storytok-agent estimate story --script-file story.txt --voice Joanna` |
 | Status / wait / download | `npx -y github:juanditb/storytok-agent job <id>`, `npx -y github:juanditb/storytok-agent wait <id>`, `npx -y github:juanditb/storytok-agent download <id> --out .` |
 
-`--wait --out DIR` blocks until the render finishes (30–180 s) and saves the file. Add `--json` for machine-readable output.
+`--wait --out DIR` blocks until the render finishes (30–180 s, `--timeout` to change the 240 s cap) and saves the file. Always pass `--out` with the directory the user wants. Add `--json` for machine-readable output.
 
 `convo.json` is `[{"side":"left","text":"are you awake","pause":"none"}, {"side":"right","text":"it's 3am. what","pause":"short"}]`. Left is the contact, right is "you". Use `--message "left: …" --message "right[long]: …"` for short conversations.
 
@@ -44,5 +44,9 @@ Run everything through the CLI: `npx -y github:juanditb/storytok-agent <command>
 - `too_many_active_jobs` / `429`: three renders are already running; wait for one, then retry.
 - `daily_cap_reached` / `429`: this key's daily cap is used up; the user can raise it at `https://storytok.ai/settings/developer`.
 - `idempotent_replay` in the output: identical inputs rendered recently and that job was returned instead of a new charge. Pass `--fresh` to force a new render.
+- `request_in_progress` / `409`: the same request is still being created; wait a few seconds and re-run the same command.
+- `idempotency_key_reused` / `422`: only after passing a custom `--idempotency-key` with a changed body; pick a new key.
+- `expired_token` / `410` during login: the code timed out or was already used; run `login` again.
+- `timeout` or `network_error`: StoryTok did not answer; check `STORYTOK_API_URL` (default https://storytok.ai) and retry once.
 
 Docs: https://storytok.ai/developers/agents

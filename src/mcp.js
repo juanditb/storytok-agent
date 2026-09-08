@@ -4,6 +4,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
+import path from "node:path"
 import { z } from "zod"
 
 import {
@@ -21,6 +22,7 @@ import {
   newIdempotencyKey,
   probeDurationSeconds,
   resolveApiKey,
+  defaultDownloadDir,
   siteUrl,
 } from "./core.js"
 
@@ -51,7 +53,13 @@ const captionsSchema = z
   ])
   .optional()
 
-const musicSchema = z.string().optional().describe("A music key from get_catalog (stock or the user's own upload). Omit for no music.")
+const musicSchema = z
+  .union([
+    z.string().describe("A music key from get_catalog (stock or the user's own upload)."),
+    z.object({ key: z.string(), volume: z.number().int().min(0).max(100).default(18) }).describe("Music key plus volume 0–100 (default 18)."),
+  ])
+  .optional()
+  .describe("Background music. Omit for none.")
 
 /**
  * Map the MCP host's `clientInfo.name` (sent on initialize) to the short
@@ -74,7 +82,9 @@ export function clientIdFromHost(info) {
 }
 
 export async function createServer({ client } = {}) {
-  const api = new StoryTokClient({ apiKey: await resolveApiKey(), client: client ?? `mcp/${VERSION}` })
+  const apiKey = await resolveApiKey()
+  if (!apiKey) console.error("storytok mcp: no API key found. Set STORYTOK_API_KEY in the MCP config or run `storytok login`, then restart the server.")
+  const api = new StoryTokClient({ apiKey, client: client ?? `mcp/${VERSION}` })
   const server = new McpServer({ name: "storytok", version: VERSION }, { instructions:
     `StoryTok renders vertical (1080×1920) narrated, captioned videos: Reddit stories, texting stories, auto captions, split screen and highlight clips. Credits: 1 per rendered minute (2 with premium voices); failed renders refund automatically. ${CONFIRM_RULE} Use get_catalog for valid voice ids, caption presets, chat themes, backgrounds and highlight types before creating. After creating, wait_for_job then download_job so the user gets the file. Site: ${siteUrl()}` })
 
@@ -113,6 +123,7 @@ export async function createServer({ client } = {}) {
       try {
         const data = await api.catalog()
         if (section === "voices" || (!section && language)) {
+          // language only narrows voices; other sections ignore it.
           const voices = data.voices.filter((v) => !language || String(v.language).toLowerCase().includes(language.toLowerCase()))
           return text(voices.map((v) => ({ id: v.id, language: v.language, gender: v.gender, accent: v.accent, description: v.description, premium: v.premium })))
         }
@@ -175,7 +186,11 @@ export async function createServer({ client } = {}) {
     })
   }
 
+  // Story/text tools derive an Idempotency-Key from their inputs, so a retry
+  // returns the same job. Upload tools declare a fresh upload each call, so
+  // they are not idempotent and a retry after a timeout would render twice.
   const createAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+  const uploadAnnotations = { ...createAnnotations, idempotentHint: false }
 
   server.registerTool(
     "create_story_video",
@@ -183,7 +198,7 @@ export async function createServer({ client } = {}) {
       title: "Reddit story video",
       description: `Narrated story over gameplay with word-timed captions and an optional Reddit intro card. Provide the script yourself (write it in the StoryTok house style: first person, hook in the first sentence, 40–120 seconds) or pass reddit_url. ${CONFIRM_RULE}`,
       inputSchema: {
-        title: z.string().min(1).max(300),
+        title: z.string().min(1).max(300).optional().describe("Video title (≤80 characters reads best). Taken from the post when reddit_url is given."),
         script: z.string().min(1).max(12000).optional().describe("The narration. Omit when passing reddit_url."),
         reddit_url: z.string().url().optional().describe("Import title, script and intro stats from this post instead of writing them."),
         voice: z.string().default("Joanna").describe("Voice id from get_catalog. Premium voices cost 2× per minute."),
@@ -293,7 +308,7 @@ export async function createServer({ client } = {}) {
       title: "Auto captions",
       description: `Transcribes a local speaking video and burns styled word-level captions into a vertical export. ${CONFIRM_RULE}`,
       inputSchema: { ...uploadSchema, bar_style: z.enum(["blur", "black"]).default("blur").describe("How landscape sources fill 9:16.") },
-      annotations: createAnnotations,
+      annotations: uploadAnnotations,
     },
     async (args) => {
       try {
@@ -316,7 +331,7 @@ export async function createServer({ client } = {}) {
         facecam: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0.05).max(1), h: z.number().min(0.05).max(1) }).optional().describe("Streamer only: facecam rectangle as fractions of the frame."),
         bar_style: z.enum(["blur", "black"]).default("blur"),
       },
-      annotations: createAnnotations,
+      annotations: uploadAnnotations,
     },
     async (args) => {
       try {
@@ -337,11 +352,11 @@ export async function createServer({ client } = {}) {
         clip_count: z.number().int().min(1).max(20).default(3),
         highlight_type: z.enum(["engaging_content", "funny_moments", "comedy_highlights", "key_insights", "educational_content", "epic_gameplay", "gaming_highlights", "quotable_moments", "engaging_discussions", "business_insights", "professional_advice", "high_energy", "emotional_moments"]).default("engaging_content"),
         clip_style: z.enum(["subtitles", "splitscreen"]).default("subtitles"),
-        backgrounds: z.array(z.string()).max(10).default([]).describe("For clip_style 'splitscreen': background keys to rotate through."),
+        backgrounds: z.array(z.string()).max(10).default([]).describe("Required for clip_style 'splitscreen' (at least one background key to rotate through); ignored otherwise."),
         auto_length: z.boolean().default(true).describe("Let AI pick each clip's length (15–60 s)."),
         clip_length: z.number().int().min(10).max(90).default(30).describe("Fixed clip length when auto_length is false."),
       },
-      annotations: createAnnotations,
+      annotations: uploadAnnotations,
     },
     async (args) => {
       try {
@@ -375,13 +390,25 @@ export async function createServer({ client } = {}) {
     "wait_for_job",
     {
       title: "Wait for a render",
-      description: "Blocks until the job finishes or timeout_s passes (renders usually take 30–180 s). Returns the finished job or a still-running snapshot; call again to keep waiting.",
-      inputSchema: { job_id: z.string().uuid(), timeout_s: z.number().int().min(5).max(600).default(300) },
+      description: "Blocks until the job finishes or timeout_s passes (renders usually take 30–180 s), sending progress notifications while it waits. Returns the finished job or a still-running snapshot with timed_out=true; call again to keep waiting.",
+      inputSchema: { job_id: z.string().uuid(), timeout_s: z.number().int().min(5).max(600).default(180) },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    async ({ job_id, timeout_s }) => {
+    async ({ job_id, timeout_s }, extra) => {
       try {
-        return text(await api.waitForJob(job_id, { timeoutS: timeout_s }))
+        const progressToken = extra?._meta?.progressToken
+        const onProgress = async (job) => {
+          if (progressToken === undefined || !extra?.sendNotification) return
+          try {
+            await extra.sendNotification({
+              method: "notifications/progress",
+              params: { progressToken, progress: Number(job.progress ?? 0), total: 100, message: `${job.status}${job.stage ? ` · ${job.stage}` : ""}` },
+            })
+          } catch {
+            // A host that dropped the request is not a reason to stop waiting.
+          }
+        }
+        return text(await api.waitForJob(job_id, { timeoutS: timeout_s, onProgress }))
       } catch (error) {
         return errorResult(error)
       }
@@ -393,12 +420,15 @@ export async function createServer({ client } = {}) {
     {
       title: "Download the video",
       description: "Saves the finished MP4 (or every highlight clip plus the zip) into dest_dir on this machine and returns the file paths. Use after wait_for_job reports completed.",
-      inputSchema: { job_id: z.string().uuid(), dest_dir: z.string().default(process.cwd()).describe("Absolute directory to save into; defaults to the current working directory.") },
+      inputSchema: {
+        job_id: z.string().uuid(),
+        dest_dir: z.string().optional().describe(`Absolute directory to save into. Pass the user's project or target folder; if omitted the server uses its own working directory (${defaultDownloadDir()}).`),
+      },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async ({ job_id, dest_dir }) => {
       try {
-        const saved = await api.download(job_id, dest_dir)
+        const saved = await api.download(job_id, dest_dir && path.isAbsolute(dest_dir) ? dest_dir : path.resolve(defaultDownloadDir(), dest_dir ?? "."))
         return text({ files: saved.files, job: saved.job })
       } catch (error) {
         return errorResult(error)

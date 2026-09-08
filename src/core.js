@@ -1,6 +1,6 @@
 // Shared core for the StoryTok CLI and MCP server: HTTP client, uploads,
 // estimates, job creation with retry-safe idempotency, waiting, downloads,
-// and the device-code login. Plain ESM, Node 18+, no build step.
+// and the device-code login. Plain ESM, Node 20+ (openAsBlob), no build step.
 
 import { createHash, randomUUID } from "node:crypto"
 import { createWriteStream, openAsBlob } from "node:fs"
@@ -109,12 +109,21 @@ export class StoryTokClient {
       requestHeaders["content-type"] = "application/json"
       payload = JSON.stringify(body)
     }
-    const response = await fetch(url, {
-      method,
-      headers: requestHeaders,
-      body: payload,
-      signal: AbortSignal.timeout(timeoutMs),
-    })
+    let response
+    try {
+      response = await fetch(url, {
+        method,
+        headers: requestHeaders,
+        body: payload,
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+    } catch (cause) {
+      const timedOut = cause?.name === "TimeoutError" || cause?.name === "AbortError"
+      throw new StoryTokError(
+        timedOut ? `StoryTok did not answer within ${Math.round(timeoutMs / 1000)} s (${method} ${path}).` : `Could not reach StoryTok at ${this.baseUrl}: ${cause?.cause?.message ?? cause?.message ?? cause}`,
+        { code: timedOut ? "timeout" : "network_error" },
+      )
+    }
     const text = await response.text()
     let data
     try {
@@ -160,22 +169,26 @@ export class StoryTokClient {
 
   async getJob(jobId, { wait = 0 } = {}) {
     const suffix = wait > 0 ? `?wait=${Math.min(60, Math.floor(wait))}` : ""
-    return this.get(`/jobs/${jobId}${suffix}`, { timeoutMs: 90_000 })
+    return this.get(`/jobs/${encodeURIComponent(jobId)}${suffix}`, { timeoutMs: 90_000 })
   }
 
   /**
    * Blocks until the job is terminal or `timeoutS` passes, using the API's
    * long-poll so there is one open request instead of a tight loop.
    */
-  async waitForJob(jobId, { timeoutS = 600, onProgress } = {}) {
+  async waitForJob(jobId, { timeoutS = 240, onProgress } = {}) {
     const deadline = Date.now() + timeoutS * 1000
     let last
     while (true) {
       const remaining = Math.max(0, Math.floor((deadline - Date.now()) / 1000))
+      const startedAt = Date.now()
       last = await this.getJob(jobId, { wait: Math.min(60, remaining) })
-      onProgress?.(last.job)
+      await onProgress?.(last.job)
       if (["completed", "failed", "canceled"].includes(last.job.status)) return last
       if (Date.now() >= deadline) return { ...last, timed_out: true }
+      // If the server answered instantly (no long-poll support upstream), do
+      // not spin: pace the loop at 2 s.
+      if (Date.now() - startedAt < 1000) await sleep(2000)
     }
   }
 
@@ -204,7 +217,11 @@ export class StoryTokClient {
   async uploadFile(filePath, { onProgress } = {}) {
     const info = await stat(filePath)
     if (!info.isFile()) throw new StoryTokError(`Not a file: ${filePath}`, { code: "invalid_file" })
+    if (info.size < MIN_UPLOAD_BYTES) throw new StoryTokError(`File is too small to be a video (${info.size} bytes).`, { code: "invalid_file" })
     const contentType = contentTypeFor(filePath)
+    if (!contentType) {
+      throw new StoryTokError(`Unsupported file type "${path.extname(filePath) || "(none)"}". Use ${SUPPORTED_EXTENSIONS.join(", ")}.`, { code: "invalid_file" })
+    }
     const declared = await this.post("/uploads", {
       filename: path.basename(filePath),
       content_type: contentType,
@@ -227,6 +244,7 @@ export class StoryTokClient {
 
   /** Saves the finished MP4 (or every highlight clip plus the zip) into destDir. */
   async download(jobId, destDir = process.cwd()) {
+    if (!UUID_RE.test(String(jobId))) throw new StoryTokError("Job id must be a UUID.", { code: "invalid_input" })
     const result = await this.getJob(jobId)
     const job = result.job
     if (job.status !== "completed") {
@@ -258,7 +276,8 @@ export class StoryTokClient {
   /* ---------------------------- login --------------------------- */
 
   async startDeviceLogin(client) {
-    return this.post("/device/code", { client }, { auth: false })
+    const safe = String(client).replace(/\s+/g, "-").replace(/[^A-Za-z0-9._\/-]/g, "").slice(0, 60) || `cli/${VERSION}`
+    return this.post("/device/code", { client: safe }, { auth: false })
   }
 
   /** Polls until approved/expired. Returns { api_key, key_name }. */
@@ -330,7 +349,7 @@ export function buildStoryJob({
     if (Number.isFinite(introUpvotes)) jobData.intro_upvotes = introUpvotes
     if (Number.isFinite(introComments)) jobData.intro_comments = introComments
   }
-  if (music) jobData.music = typeof music === "string" ? { key: music, volume: 0.18 } : music
+  if (music) jobData.music = musicFor(music)
   return { jobType: "stories", preset: "modern", jobData }
 }
 
@@ -367,14 +386,14 @@ export function buildTextingJob({
     sfx: Boolean(sfx),
     background,
   }
-  if (music) jobData.music = typeof music === "string" ? { key: music, volume: 0.18 } : music
+  if (music) jobData.music = musicFor(music)
   return { jobType: "fake_text", preset: "modern", jobData }
 }
 
 export function buildCaptionsJob({ title, uploadId, captions, trim, barStyle = "blur", music }) {
   const jobData = { title: title || "Captioned video", source_upload_id: uploadId, subtitle_style: captionStyle(captions), bar_style: barStyle }
   applyTrim(jobData, trim)
-  if (music) jobData.music = typeof music === "string" ? { key: music, volume: 0.18 } : music
+  if (music) jobData.music = musicFor(music)
   return { jobType: "subtitles", preset: "modern", jobData }
 }
 
@@ -382,13 +401,22 @@ export function buildSplitscreenJob({ title, uploadId, layout = "classic", backg
   if (layout === "classic" && !background) throw new StoryTokError("Classic split screen needs a background.", { code: "invalid_input" })
   const jobData = { title: title || "Split screen", source_upload_id: uploadId, layout, subtitle_style: captionStyle(captions), bar_style: barStyle }
   if (layout === "classic") jobData.background = background
-  if (layout === "streamer") jobData.facecam = facecam ?? { x: 0.02, y: 0.02, w: 0.3, h: 0.3 }
+  if (layout === "streamer") {
+    const cam = facecam ?? { x: 0.02, y: 0.02, w: 0.3, h: 0.3 }
+    if (["x", "y", "w", "h"].some((k) => !Number.isFinite(cam[k]) || cam[k] < 0 || cam[k] > 1) || cam.w === 0 || cam.h === 0) {
+      throw new StoryTokError("facecam needs x, y, w, h as fractions of the frame (0–1), e.g. 0.02,0.02,0.3,0.3.", { code: "invalid_input" })
+    }
+    jobData.facecam = cam
+  }
   applyTrim(jobData, trim)
-  if (music) jobData.music = typeof music === "string" ? { key: music, volume: 0.18 } : music
+  if (music) jobData.music = musicFor(music)
   return { jobType: "splitscreen", preset: "modern", jobData }
 }
 
 export function buildHighlightsJob({ title, uploadId, clipCount = 3, clipLength = 30, autoLength = true, clipStyle = "subtitles", highlightType = "engaging_content", backgrounds = [], captions, trim, barStyle = "blur" }) {
+  if (clipStyle === "splitscreen" && backgrounds.length === 0) {
+    throw new StoryTokError("Split-screen highlights need at least one background key (see the catalog).", { code: "invalid_input" })
+  }
   const jobData = {
     title: title || "Highlights",
     source_upload_id: uploadId,
@@ -438,20 +466,37 @@ function applyTrim(jobData, trim) {
   if (Number.isFinite(trim.end) && trim.end > 0) jobData.trim_end = trim.end
 }
 
+// Mirrors the API's upload allow-list (lib/upload/server.ts); .m4v is MP4.
+const CONTENT_TYPES = {
+  ".mp4": "video/mp4",
+  ".m4v": "video/mp4",
+  ".mov": "video/quicktime",
+  ".webm": "video/webm",
+  ".avi": "video/x-msvideo",
+}
+export const SUPPORTED_EXTENSIONS = Object.keys(CONTENT_TYPES)
+export const MIN_UPLOAD_BYTES = 10 * 1024
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Returns the MIME type the API accepts for this file, or null if unsupported. */
 export function contentTypeFor(filePath) {
-  const ext = path.extname(filePath).toLowerCase()
-  return (
-    {
-      ".mp4": "video/mp4",
-      ".mov": "video/quicktime",
-      ".webm": "video/webm",
-      ".avi": "video/x-msvideo",
-      ".m4v": "video/x-m4v",
-      ".mp3": "audio/mpeg",
-      ".m4a": "audio/mp4",
-      ".wav": "audio/wav",
-    }[ext] ?? "application/octet-stream"
-  )
+  return CONTENT_TYPES[path.extname(filePath).toLowerCase()] ?? null
+}
+
+/** `music` may be a catalog key or {key, volume 0–100}; the API wants an integer volume. */
+export function musicFor(music) {
+  if (typeof music === "string") return { key: music, volume: 18 }
+  const volume = music.volume === undefined ? 18 : Math.round(Number(music.volume))
+  if (!Number.isFinite(volume) || volume < 0 || volume > 100) throw new StoryTokError("music.volume must be 0–100.", { code: "invalid_input" })
+  return { key: music.key, volume }
+}
+
+/** Where downloads go when the caller gives no directory. */
+export function defaultDownloadDir() {
+  const cwd = process.cwd()
+  // MCP hosts like Claude Desktop start servers at "/", which is not a place to save videos.
+  if (cwd === path.parse(cwd).root) return path.join(homedir(), "Downloads", "storytok")
+  return cwd
 }
 
 /** Source length via ffprobe when installed; null otherwise (estimate then falls back to 1 credit). */

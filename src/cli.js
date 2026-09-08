@@ -20,6 +20,7 @@ import {
   formatMinutes,
   newIdempotencyKey,
   probeDurationSeconds,
+  defaultDownloadDir,
   readConfig,
   resolveApiKey,
   siteUrl,
@@ -30,20 +31,22 @@ const HELP = `storytok ${VERSION} — make StoryTok videos from the terminal or 
 
 Usage: storytok <command> [options]
 
-  login [--client <name>]         Connect this machine to your StoryTok account (opens a code page)
+  login [--client <name>]         Connect this machine to your StoryTok account (prints a code + link to approve; --timeout S)
   logout                          Forget the stored key
   account                         Balance, trial credits, daily cap
   catalog [--voices|--backgrounds|--presets|--themes|--types|--music]
   estimate <format> [inputs]      Credits a render would reserve (same inputs as the create commands)
 
-  story      --title T --script S | --script-file F | --reddit URL  [--voice V --speed 1.2 --background B --captions P --intro --music K]
-  text       --contact NAME --messages FILE.json | --message "left: hi" --message "right: hey" [--theme T --left-voice V --right-voice V --no-narration --background B]
-  captions   <video> [--captions P --trim 0:10-1:30]
+  story      --title T --script S | --script-file F | --script - (stdin) | --reddit URL
+             [--voice V --speed 1.2 --background B --captions P --intro --intro-username U --intro-upvotes N --intro-comments N --music K --bars blur|black]
+  text       --contact NAME --messages FILE.json | --message "left: hi" --message "right: hey" [--theme T --left-voice V --right-voice V --no-narration --no-sfx --background B --music K]
+  captions   <video> [--captions P --trim 0:10-1:30 --bars blur|black --music K]
   splitscreen <video> --background B | --layout streamer [--facecam x,y,w,h] [--captions P]
   highlights <video> [--clips 3 --type engaging_content --style subtitles|splitscreen --backgrounds A,B --length 30 --fixed-length]
 
   job <id> [--wait]               Status, or block until finished
-  wait <id> [--timeout 600]       Block until finished, then print the result
+  wait <id> [--timeout 240]       Block until finished, then print the result
+  estimate captions|splitscreen|highlights --seconds N   Cost for a source of N seconds without a file
   download <id> [--out DIR]       Save the MP4 (or clips + zip)
   jobs [--limit 20 --status S --type T]
   reddit <url>                    Read a Reddit post into title + script
@@ -52,10 +55,19 @@ Usage: storytok <command> [options]
 Common flags: --yes (skip the cost confirmation), --wait (block until rendered), --out DIR (download when done), --json (machine output), --fresh (force a new render of identical inputs)
 Keys: STORYTOK_API_KEY env var or \`storytok login\`. Docs: ${siteUrl()}/developers/agents`
 
+/** Flags that never take a value, so `--wait ./clip.mp4` keeps the file as a positional. */
+const BOOLEAN_FLAGS = new Set(["yes", "wait", "json", "fresh", "intro", "fixedLength", "help", "version", "narration", "sfx"])
+/** Flags that may repeat (collected into arrays). Any other repeated flag is an error. */
+const LIST_FLAGS = new Set(["message"])
+
 export function parseArgs(argv) {
   const args = { _: [], flags: {} }
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i]
+    if (token === "--") {
+      args._.push(...argv.slice(i + 1))
+      break
+    }
     if (token.startsWith("--")) {
       const [rawKey, inlineValue] = token.slice(2).split(/=(.*)/s)
       const key = rawKey.replace(/-([a-z])/g, (_, c) => c.toUpperCase())
@@ -63,6 +75,8 @@ export function parseArgs(argv) {
         push(args.flags, key, inlineValue)
       } else if (rawKey.startsWith("no-")) {
         args.flags[rawKey.slice(3).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = false
+      } else if (BOOLEAN_FLAGS.has(key)) {
+        args.flags[key] = true
       } else if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
         push(args.flags, key, argv[i + 1])
         i += 1
@@ -77,6 +91,9 @@ export function parseArgs(argv) {
 }
 
 function push(flags, key, value) {
+  if (key in flags && !LIST_FLAGS.has(key)) {
+    throw new StoryTokError(`--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} was given more than once.`, { code: "invalid_input" })
+  }
   if (key in flags) {
     flags[key] = Array.isArray(flags[key]) ? [...flags[key], value] : [flags[key], value]
   } else {
@@ -163,7 +180,7 @@ async function createFlow(client, payload, { flags, durationSeconds, json }) {
       throw new StoryTokError(`Job ${result.job.status}: ${result.job.failure_message ?? "no details"}`, { code: "job_failed" })
     }
     if (flags.out) {
-      const saved = await client.download(created.job.id, flags.out === true ? process.cwd() : flags.out)
+      const saved = await client.download(created.job.id, flags.out === true ? defaultDownloadDir() : flags.out)
       result.files = saved.files
       if (!json) for (const file of saved.files) print(`Saved ${file}`)
     }
@@ -171,21 +188,36 @@ async function createFlow(client, payload, { flags, durationSeconds, json }) {
   return result
 }
 
+/**
+ * The script comes from --script, --script-file, or stdin when `--script -`
+ * is passed. Stdin is never read implicitly: agent harnesses hand child
+ * processes an open pipe, and a silent read would hang until it closes.
+ */
 async function readScript(flags) {
-  if (flags.script && flags.script !== true) return String(flags.script)
-  if (flags.scriptFile) return (await readFile(flags.scriptFile, "utf8")).trim()
-  if (!input.isTTY) {
+  if (flags.script === "-") {
     const chunks = []
     for await (const chunk of input) chunks.push(chunk)
-    const text = Buffer.concat(chunks).toString("utf8").trim()
-    if (text) return text
+    return Buffer.concat(chunks).toString("utf8").trim() || null
+  }
+  if (flags.script && flags.script !== true) return String(flags.script)
+  if (flags.scriptFile && flags.scriptFile !== true) {
+    try {
+      return (await readFile(flags.scriptFile, "utf8")).trim()
+    } catch (cause) {
+      throw new StoryTokError(`Could not read --script-file ${flags.scriptFile}: ${cause.code ?? cause.message}`, { code: "invalid_input" })
+    }
   }
   return null
 }
 
 async function readMessages(flags) {
   if (flags.messages && flags.messages !== true) {
-    const raw = JSON.parse(await readFile(flags.messages, "utf8"))
+    let raw
+    try {
+      raw = JSON.parse(await readFile(flags.messages, "utf8"))
+    } catch (cause) {
+      throw new StoryTokError(`Could not read --messages ${flags.messages}: ${cause.code ?? cause.message}`, { code: "invalid_input" })
+    }
     return Array.isArray(raw) ? raw : raw.messages
   }
   const inline = flags.message === undefined ? [] : [].concat(flags.message)
@@ -219,7 +251,11 @@ export async function runCli(argv) {
       const started = await anon.startDeviceLogin(clientName)
       print(`Open ${started.verification_uri_complete}`)
       print(`and approve code ${started.user_code} (expires in ${Math.round(started.expires_in / 60)} min). Waiting…`)
-      const done = await anon.finishDeviceLogin(started.device_code, { intervalS: started.interval ?? 3, onTick: () => output.write(".") })
+      const done = await anon.finishDeviceLogin(started.device_code, {
+        intervalS: started.interval ?? 3,
+        timeoutS: asNumber(flags.timeout, Math.min(600, started.expires_in ?? 600)),
+        onTick: () => output.write("."),
+      })
       output.write("\n")
       const config = await readConfig()
       await writeConfig({ ...config, apiKey: done.api_key, keyName: done.key_name, connectedAt: new Date().toISOString() })
@@ -383,7 +419,7 @@ export async function runCli(argv) {
         if (!id) throw new StoryTokError(`Usage: storytok ${command} <job id>`, { code: "invalid_input" })
         const result =
           command === "wait" || flags.wait
-            ? await client.waitForJob(id, { timeoutS: asNumber(flags.timeout, 600), onProgress: (job) => { if (!json) output.write(`  ${job.status} ${job.progress ?? 0}% ${job.stage ?? ""}\n`) } })
+            ? await client.waitForJob(id, { timeoutS: asNumber(flags.timeout, 240), onProgress: (job) => { if (!json) output.write(`  ${job.status} ${job.progress ?? 0}% ${job.stage ?? ""}\n`) } })
             : await client.getJob(id)
         print(json ? result : `${result.job.status} · ${result.job.progress ?? 0}% · ${result.job.stage ?? ""}${result.download_url ? `\nDownload: ${result.download_url}` : ""}`)
         return 0
@@ -391,7 +427,7 @@ export async function runCli(argv) {
       case "download": {
         const id = positional[1]
         if (!id) throw new StoryTokError("Usage: storytok download <job id> [--out DIR]", { code: "invalid_input" })
-        const saved = await client.download(id, flags.out === true || !flags.out ? process.cwd() : flags.out)
+        const saved = await client.download(id, flags.out === true || !flags.out ? defaultDownloadDir() : flags.out)
         print(json ? saved : saved.files.map((f) => `Saved ${f}`).join("\n"))
         return 0
       }
@@ -401,13 +437,19 @@ export async function runCli(argv) {
         return 0
       }
       default:
-        print(HELP)
+        if (json) print({ error: { code: "unknown_command", message: `Unknown command "${command}". Run storytok --help.` } })
+        else process.stderr.write(`Unknown command "${command}".\n\n${HELP}\n`)
         return 2
     }
   } catch (error) {
     if (error instanceof StoryTokError) {
-      print(json ? { error: { code: error.code, message: error.message, details: error.details } } : `Error: ${error.message}`)
+      if (json) print({ error: { code: error.code, message: error.message, details: error.details } })
+      else process.stderr.write(`Error: ${error.message}\n`)
       return error.code === "not_confirmed" ? 3 : 1
+    }
+    if (json) {
+      print({ error: { code: "unexpected", message: String(error?.message ?? error) } })
+      return 1
     }
     throw error
   }

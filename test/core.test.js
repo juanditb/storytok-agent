@@ -96,10 +96,10 @@ describe("client", () => {
     const client = new StoryTokClient({ apiKey: "stk_live_test" })
     const dir = await mkdtemp(path.join(tmpdir(), "storytok-up-"))
     const file = path.join(dir, "clip.mp4")
-    await writeFile(file, Buffer.alloc(2048, 1))
+    await writeFile(file, Buffer.alloc(20480, 1))
     const uploadId = await client.uploadFile(file)
     assert.equal(api.state.uploads.get(uploadId).status, "verified")
-    assert.equal(api.state.uploads.get(uploadId).bytes, 2048)
+    assert.equal(api.state.uploads.get(uploadId).bytes, 20480)
   })
 
   it("explains a missing key instead of sending a request", async () => {
