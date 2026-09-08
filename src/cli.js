@@ -235,12 +235,12 @@ export async function runCli(argv) {
   const command = positional[0]
   const json = Boolean(flags.json)
 
-  if (!command || flags.help || command === "help") {
-    print(HELP)
-    return 0
-  }
   if (flags.version || command === "version") {
     print(VERSION)
+    return 0
+  }
+  if (!command || flags.help || command === "help") {
+    print(HELP)
     return 0
   }
 
