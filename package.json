@@ -1,0 +1,48 @@
+{
+  "name": "storytok",
+  "version": "0.1.0",
+  "description": "Make StoryTok videos (Reddit stories, texting stories, captions, split screen, highlights) from any coding agent: CLI, MCP server and agent skill.",
+  "type": "module",
+  "bin": {
+    "storytok": "bin/storytok.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skill",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "mcp": "node bin/storytok.js mcp"
+  },
+  "keywords": [
+    "storytok",
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "codex",
+    "cursor",
+    "video",
+    "tiktok",
+    "reddit-story",
+    "faceless-video"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juanditb/storytok-agent"
+  },
+  "homepage": "https://storytok.ai/developers/agents",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.0"
+  },
+  "bugs": {
+    "url": "https://github.com/juanditb/storytok-agent/issues"
+  }
+}
