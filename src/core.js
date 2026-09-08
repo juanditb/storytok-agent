@@ -3,7 +3,7 @@
 // and the device-code login. Plain ESM, Node 20+ (openAsBlob), no build step.
 
 import { createHash, randomUUID } from "node:crypto"
-import { createWriteStream, openAsBlob } from "node:fs"
+import { createWriteStream, openAsBlob, readFileSync } from "node:fs"
 import { mkdir, readFile, stat, writeFile, chmod } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
@@ -12,7 +12,8 @@ import { Readable } from "node:stream"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 
-export const VERSION = "0.1.0"
+// Read from package.json so the CLI, MCP server and client header never lag a release.
+export const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version
 export const DEFAULT_BASE_URL = "https://storytok.ai/api/v1"
 export const SITE_URL = "https://storytok.ai"
 export const FORMATS = ["stories", "fake_text", "subtitles", "splitscreen", "highlights"]
